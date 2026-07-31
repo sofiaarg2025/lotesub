@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#b30000" />
+  <meta name="description" content="Gestión local-first de órdenes de trabajo de mantenimiento." />
+  <title>OT-MTTO Gestión 2.0</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+
+  <header class="topbar">
+    <button id="menuBtn" class="icon-btn menu-btn" aria-label="Abrir menú">☰</button>
+    <div class="brand-mark" aria-hidden="true">OT</div>
+    <div class="brand-copy">
+      <h1>OT-MTTO Gestión</h1>
+      <p>Órdenes de trabajo · activos · indicadores · auditoría</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="notifyBtn" class="icon-btn" title="Activar notificaciones">🔔</button>
+      <button id="installBtn" class="btn secondary hidden">Instalar</button>
+      <button id="newOtBtn" class="btn primary">＋ Nueva OT</button>
+      <div class="user-chip">
+        <span id="userInitials">AD</span>
+        <div>
+          <strong id="currentUserName">Administrador local</strong>
+          <small id="currentRole">Administrador</small>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar">
+      <nav class="nav-list" aria-label="Navegación principal">
+        <button class="nav-item active" data-view="dashboard"><span>▦</span> Dashboard</button>
+        <button class="nav-item" data-view="orders"><span>☷</span> Órdenes de trabajo</button>
+        <button class="nav-item" data-view="assets"><span>⚙</span> Equipos y activos</button>
+        <button class="nav-item" data-view="people"><span>👥</span> Personal</button>
+        <button class="nav-item" data-view="audit"><span>↺</span> Historial</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span> Configuración</button>
+      </nav>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">Datos</div>
+        <label class="nav-item file-action">
+          <span>⇧</span> Importar Excel/CSV
+          <input id="importInput" type="file" accept=".xlsx,.xls,.xlsm,.csv,.txt" hidden />
+        </label>
+        <button id="exportExcelBtn" class="nav-item"><span>⇩</span> Exportar Excel</button>
+        <button id="exportCsvBtn" class="nav-item"><span>⇩</span> Exportar CSV</button>
+        <button id="printDashboardBtn" class="nav-item"><span>▣</span> Imprimir / PDF</button>
+        <button id="backupBtn" class="nav-item"><span>⬇</span> Crear respaldo</button>
+      </div>
+
+      <div class="storage-card">
+        <div>
+          <strong>Base local</strong>
+          <small id="storageStatus">Preparando…</small>
+        </div>
+        <span id="syncDot" class="status-dot"></span>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <section id="filterBar" class="filter-bar">
+        <div class="filter-title-row">
+          <div>
+            <strong>Filtros generales</strong>
+            <small id="resultSummary">—</small>
+          </div>
+          <button id="toggleFiltersBtn" class="btn ghost compact">Filtros</button>
+        </div>
+        <div id="filtersPanel" class="filters-grid">
+          <label>Desde<input id="fDateFrom" type="date" /></label>
+          <label>Hasta<input id="fDateTo" type="date" /></label>
+          <label>Sector<select id="fSector"><option value="">Todos</option></select></label>
+          <label>Equipo<select id="fEquipment"><option value="">Todos</option></select></label>
+          <label>Tipo<select id="fType"><option value="">Todos</option></select></label>
+          <label>Estado<select id="fStatus"><option value="">Todos</option></select></label>
+          <label>Criticidad<select id="fCriticality"><option value="">Todas</option></select></label>
+          <label>Supervisor<select id="fSupervisor"><option value="">Todos</option></select></label>
+          <label>Ejecutor<select id="fExecutor"><option value="">Todos</option></select></label>
+          <label>Antigüedad<select id="fAge"><option value="">Todas</option><option value="0-7">0–7 días</option><option value="8-30">8–30 días</option><option value="31-90">31–90 días</option><option value="90+">Más de 90 días</option></select></label>
+          <label class="filter-search">Búsqueda<input id="globalSearch" type="search" placeholder="OT, equipo, descripción, persona…" /></label>
+          <button id="resetFiltersBtn" class="btn secondary">Limpiar filtros</button>
+        </div>
+      </section>
+
+      <section id="view-dashboard" class="view active">
+        <div class="view-heading">
+          <div>
+            <h2>Dashboard ejecutivo</h2>
+            <p>Estado, volumen, backlog, criticidad y confiabilidad.</p>
+          </div>
+          <div class="heading-actions">
+            <button id="dashboardRefreshBtn" class="btn secondary">Actualizar</button>
+          </div>
+        </div>
+
+        <div id="alertsPanel" class="alerts-panel"></div>
+        <div id="kpiGrid" class="kpi-grid"></div>
+
+        <div class="dashboard-grid two">
+          <article class="panel wide">
+            <div class="panel-heading"><div><h3>Evolución mensual</h3><p>Emitidas, finalizadas y abiertas.</p></div></div>
+            <div class="chart-box tall"><canvas id="monthlyChart"></canvas></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Estado actual</h3><p>Hacé clic para filtrar.</p></div></div>
+            <div class="chart-box"><canvas id="statusChart"></canvas></div>
+          </article>
+        </div>
+
+        <div class="dashboard-grid three">
+          <article class="panel"><div class="panel-heading"><div><h3>Tipo de solicitud</h3></div></div><div class="chart-box"><canvas id="typeChart"></canvas></div></article>
+          <article class="panel"><div class="panel-heading"><div><h3>Criticidad</h3></div></div><div class="chart-box"><canvas id="criticalityChart"></canvas></div></article>
+          <article class="panel"><div class="panel-heading"><div><h3>Antigüedad del backlog</h3></div></div><div class="chart-box"><canvas id="ageChart"></canvas></div></article>
+        </div>
+
+        <div class="dashboard-grid two">
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Backlog por sector</h3><p>Órdenes abiertas.</p></div></div>
+            <div class="chart-box tall"><canvas id="sectorBacklogChart"></canvas></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Equipos recurrentes</h3><p>Activos con mayor cantidad de correctivos.</p></div></div>
+            <div class="chart-box tall"><canvas id="equipmentChart"></canvas></div>
+          </article>
+        </div>
+
+        <div class="dashboard-grid two">
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Horas planificadas vs. reales</h3></div></div>
+            <div class="chart-box"><canvas id="hoursChart"></canvas></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Lectura ejecutiva</h3><p>Hallazgos automáticos del período.</p></div></div>
+            <div id="executiveInsights" class="insights-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-orders" class="view">
+        <div class="view-heading">
+          <div><h2>Órdenes de trabajo</h2><p>Alta, edición, seguimiento, cierre y acciones masivas.</p></div>
+          <div class="heading-actions">
+            <button id="bulkStatusBtn" class="btn secondary" disabled>Cambiar estado</button>
+            <button id="bulkArchiveBtn" class="btn danger-outline" disabled>Archivar</button>
+            <button id="ordersNewBtn" class="btn primary">＋ Nueva OT</button>
+          </div>
+        </div>
+
+        <article class="panel table-panel">
+          <div class="table-toolbar">
+            <div class="segmented">
+              <button class="segment active" data-order-scope="active">Activas</button>
+              <button class="segment" data-order-scope="all">Todas</button>
+              <button class="segment" data-order-scope="archived">Archivadas</button>
+            </div>
+            <div class="table-meta"><span id="selectedCount">0 seleccionadas</span><span id="ordersCount">—</span></div>
+          </div>
+          <div class="desktop-table-wrap">
+            <table id="ordersTable">
+              <thead><tr>
+                <th><input id="selectAllOrders" type="checkbox" aria-label="Seleccionar todas" /></th>
+                <th data-sort="ot">OT</th><th data-sort="date">Fecha</th><th data-sort="sector">Sector</th><th data-sort="equipment">Equipo</th>
+                <th>Descripción</th><th data-sort="type">Tipo</th><th data-sort="criticality">Crit.</th><th data-sort="status">Estado</th>
+                <th data-sort="supervisor">Supervisor</th><th data-sort="executor">Ejecutor</th><th data-sort="age">Edad</th><th>Acciones</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="ordersCards" class="mobile-order-cards"></div>
+          <div class="pagination">
+            <button id="prevPageBtn" class="btn secondary compact">Anterior</button>
+            <span id="pageInfo">Página 1</span>
+            <button id="nextPageBtn" class="btn secondary compact">Siguiente</button>
+            <select id="pageSize"><option>20</option><option>50</option><option>100</option></select>
+          </div>
+        </article>
+      </section>
+
+      <section id="view-assets" class="view">
+        <div class="view-heading"><div><h2>Equipos y activos</h2><p>Historial, reincidencias, MTTR, MTBF y disponibilidad estimada.</p></div></div>
+        <div id="assetCards" class="asset-grid"></div>
+      </section>
+
+      <section id="view-people" class="view">
+        <div class="view-heading"><div><h2>Personal y supervisión</h2><p>Carga de trabajo, horas y tasa de cierre.</p></div></div>
+        <div class="dashboard-grid two">
+          <article class="panel"><div class="panel-heading"><h3>Ejecutores</h3></div><div id="executorTableWrap" class="simple-table-wrap"></div></article>
+          <article class="panel"><div class="panel-heading"><h3>Supervisores</h3></div><div id="supervisorTableWrap" class="simple-table-wrap"></div></article>
+        </div>
+      </section>
+
+      <section id="view-audit" class="view">
+        <div class="view-heading"><div><h2>Historial de cambios</h2><p>Registro cronológico de altas, ediciones, cierres, bajas e importaciones.</p></div><button id="exportAuditBtn" class="btn secondary">Exportar historial</button></div>
+        <article class="panel">
+          <div id="auditTimeline" class="audit-timeline"></div>
+        </article>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="view-heading"><div><h2>Configuración</h2><p>Usuarios locales, permisos, catálogos y mantenimiento de datos.</p></div></div>
+        <div class="settings-grid">
+          <article class="panel">
+            <div class="panel-heading"><h3>Usuario y rol</h3></div>
+            <div class="form-grid two-col">
+              <label>Nombre<input id="settingsUserName" type="text" /></label>
+              <label>Rol<select id="settingsRole"><option>Administrador</option><option>Supervisor</option><option>Técnico</option><option>Solicitante</option><option>Solo lectura</option></select></label>
+            </div>
+            <p class="help-text">Los permisos son locales y controlan la interfaz. Para autenticación corporativa segura se necesita un backend.</p>
+            <button id="saveUserSettingsBtn" class="btn primary">Guardar usuario</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading"><h3>Catálogos</h3></div>
+            <p class="help-text">Agregá valores separados por coma. Los catálogos se completan también con los datos importados.</p>
+            <label>Estados<input id="catalogStatuses" type="text" /></label>
+            <label>Tipos<input id="catalogTypes" type="text" /></label>
+            <label>Criticidades<input id="catalogCriticalities" type="text" /></label>
+            <button id="saveCatalogsBtn" class="btn primary">Guardar catálogos</button>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading"><h3>Respaldo y recuperación</h3></div>
+            <div class="button-stack">
+              <button id="settingsBackupBtn" class="btn secondary">Descargar respaldo JSON</button>
+              <label class="btn secondary file-label">Restaurar respaldo<input id="restoreInput" type="file" accept=".json" hidden /></label>
+              <button id="loadDemoBtn" class="btn secondary">Cargar datos de demostración</button>
+              <button id="clearDataBtn" class="btn danger">Vaciar aplicación</button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading"><h3>Información técnica</h3></div>
+            <ul class="tech-list">
+              <li>Persistencia: IndexedDB del navegador.</li>
+              <li>Modo sin conexión: disponible luego de la primera carga.</li>
+              <li>Importación: XLSX, XLS, XLSM, CSV y TXT.</li>
+              <li>Exportación: Excel, CSV y respaldo JSON.</li>
+              <li>Archivos adjuntos: guardados localmente en el dispositivo.</li>
+              <li>Sincronización multiusuario: no incluida en esta versión estática.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Navegación móvil">
+    <button class="bottom-item active" data-view="dashboard">▦<span>Inicio</span></button>
+    <button class="bottom-item" data-view="orders">☷<span>OT</span></button>
+    <button id="mobileNewBtn" class="bottom-new">＋</button>
+    <button class="bottom-item" data-view="assets">⚙<span>Equipos</span></button>
+    <button class="bottom-item" data-view="audit">↺<span>Historial</span></button>
+  </nav>
+
+  <dialog id="otDialog" class="dialog large-dialog">
+    <form id="otForm" method="dialog">
+      <div class="dialog-header">
+        <div><h2 id="otDialogTitle">Nueva orden de trabajo</h2><p id="otDialogSubtitle">Complete los datos principales.</p></div>
+        <button type="button" class="icon-btn dialog-close" data-close-dialog="otDialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <input id="otId" type="hidden" />
+        <div class="form-grid three-col">
+          <label>Número de OT<input id="otNumber" required /></label>
+          <label>Fecha de aviso<input id="otDate" type="date" required /></label>
+          <label>Fecha objetivo<input id="otDueDate" type="date" /></label>
+          <label>Sector<input id="otSector" list="sectorList" required /></label>
+          <label>Equipo<input id="otEquipment" list="equipmentList" required /></label>
+          <label>Código de activo<input id="otAssetCode" /></label>
+          <label>Solicitante<input id="otRequester" list="peopleList" /></label>
+          <label>Tipo<select id="otType" required></select></label>
+          <label>Criticidad<select id="otCriticality" required></select></label>
+          <label>Estado<select id="otStatus" required></select></label>
+          <label>Supervisor<input id="otSupervisor" list="peopleList" /></label>
+          <label>Ejecutor<input id="otExecutor" list="peopleList" /></label>
+          <label>Horas planificadas<input id="otPlannedHours" type="number" min="0" step="0.25" /></label>
+          <label>Horas reales<input id="otActualHours" type="number" min="0" step="0.25" /></label>
+          <label>Fecha de finalización<input id="otCompletionDate" type="date" /></label>
+        </div>
+        <label>Descripción<textarea id="otDescription" rows="4" required></textarea></label>
+        <label>Comentarios y seguimiento<textarea id="otComments" rows="3"></textarea></label>
+        <div class="attachment-box">
+          <div><strong>Evidencias</strong><small>Fotos, PDF u otros archivos pequeños.</small></div>
+          <label class="btn secondary file-label">Adjuntar archivos<input id="otAttachments" type="file" multiple hidden /></label>
+        </div>
+        <div id="attachmentPreview" class="attachment-preview"></div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" class="btn secondary" data-close-dialog="otDialog">Cancelar</button>
+        <button id="saveOtBtn" type="submit" class="btn primary">Guardar OT</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="dialog large-dialog">
+    <div class="dialog-header"><div><h2 id="detailTitle">Detalle</h2><p id="detailSubtitle"></p></div><button class="icon-btn dialog-close" data-close-dialog="detailDialog">✕</button></div>
+    <div id="detailBody" class="dialog-body"></div>
+    <div class="dialog-footer"><button class="btn secondary" data-close-dialog="detailDialog">Cerrar</button><button id="detailEditBtn" class="btn primary">Editar</button></div>
+  </dialog>
+
+  <dialog id="statusDialog" class="dialog small-dialog">
+    <form id="bulkStatusForm" method="dialog">
+      <div class="dialog-header"><div><h2>Cambiar estado</h2><p>Se registrará en el historial.</p></div><button type="button" class="icon-btn dialog-close" data-close-dialog="statusDialog">✕</button></div>
+      <div class="dialog-body"><label>Nuevo estado<select id="bulkNewStatus"></select></label><label>Comentario<textarea id="bulkStatusComment" rows="3" placeholder="Motivo o detalle del cambio"></textarea></label></div>
+      <div class="dialog-footer"><button type="button" class="btn secondary" data-close-dialog="statusDialog">Cancelar</button><button type="submit" class="btn primary">Aplicar</button></div>
+    </form>
+  </dialog>
+
+  <datalist id="sectorList"></datalist>
+  <datalist id="equipmentList"></datalist>
+  <datalist id="peopleList"></datalist>
+</body>
+</html>

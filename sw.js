@@ -1,4 +1,4 @@
-const CACHE='lotesub-v1';
+const CACHE='lotesub-v2';
 const ASSETS=['./','./index.html','./manifest.json','./icon.svg'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));self.skipWaiting();});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))));self.clients.claim();});
